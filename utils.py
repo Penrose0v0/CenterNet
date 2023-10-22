@@ -1,4 +1,11 @@
 import numpy as np
+import matplotlib.pyplot as plt
+
+def draw_figure(x, y, title, save_path):
+    plt.plot(x, y)
+    plt.title(title)
+    plt.savefig(save_path)
+    plt.clf()
 
 def normalize_image(image, mean, std):
     image = image.astype(np.float32)

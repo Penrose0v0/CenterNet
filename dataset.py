@@ -16,9 +16,12 @@ class CenterNetDataset(Dataset):
         self.red_list, self.blue_list, self.green_list = [], [], []
         self.data = []
 
+        print(f"Reading images in {image_folder}... ")
         image_files = os.listdir(image_folder)
+        print(f"Reading annotations in {annotation_folder}... ")
         annotation_files = os.listdir(annotation_folder)
 
+        total = 0
         for image_file in image_files:
             # Add image and preprocess
             image = cv2.imread(image_folder + image_file)
@@ -45,7 +48,9 @@ class CenterNetDataset(Dataset):
 
             datum.append(annotations)
             self.data.append(datum)  # Each would be: [image, [annotation1, annotation2, ...]]
+            total += 1
 
+        print(f"Complete! Total: {total}\n")
         self.mean, self.std = self.get_mean_std()
 
     def __len__(self):
