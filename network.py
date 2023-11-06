@@ -1,31 +1,23 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
-import math
 from component import Decoder, Head
 
 class CenterNet(nn.Module):
     def __init__(self, num_classes=1):
         super(CenterNet, self).__init__()
-        self.backbone = models.resnet50()
+        self.backbone = models.resnet101(weights=models.ResNet101_Weights.IMAGENET1K_V2)
         self.backbone = torch.nn.Sequential(*self.backbone.children())[:-2]
+        self.freeze = True
+        if self.freeze:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
+        else:
+            for param in self.backbone.parameters():
+                param.requires_grad = True
 
         self.decoder = Decoder()
         self.head = Head(num_classes=num_classes)
-
-        # Initialize the parameter of each module
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-            elif isinstance(m, nn.BatchNorm2d):
-                nn.init.constant_(m.weight, 1)
-                nn.init.constant_(m.bias, 0)
-
-        # I do not know what the following code can do
-        self.head.hm_head[-2].weight.data.fill_(0)
-        self.head.hm_head[-2].bias.data.fill_(-2.19)
 
     def forward(self, x):
         x = self.backbone(x)

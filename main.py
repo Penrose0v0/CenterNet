@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import cv2
@@ -10,17 +11,19 @@ from loss import CenterNetLoss
 from dataset import CenterNetDataset
 from utils import draw_figure
 
-def train(count=1):
+def train(epoch_num, count=10):
     running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
     for batch_idx, data in enumerate(train_loader, 0):
         # Get data
-        image, hm_target, wh_target, offset_target, offset_mask = map(lambda x: x.to(device), data)
+        image, hm_target, wh_target, offset_target, offset_mask = map(lambda x: x.to(device), data[1:])
         target = hm_target, wh_target, offset_target, offset_mask
         optimizer.zero_grad()
 
         # Forward + Backward + Update
+        model.freeze = True if epoch_num < 140 else False
         pred = model(image)
         loss, loss_k, loss_off, loss_size = criterion(pred, target)
+        # print(loss)
         loss.backward()
         optimizer.step()
 
@@ -41,13 +44,14 @@ def val(epoch_num):
     running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
     total = 0
     with torch.no_grad():
+        count = 1
         for data in val_loader:
             # Get data
-            image, hm_target, wh_target, offset_target, offset_mask = map(lambda x: x.to(device), data)
-            target = hm_target, wh_target, offset_target, offset_mask
+            labels_s, images, hms_target, whs_target, offsets_target, offset_masks = map(lambda x: x.to(device), data)
+            target = hms_target, whs_target, offsets_target, offset_masks
 
             # Forward only
-            pred = model(image)
+            pred = model(images)
             loss, loss_k, loss_off, loss_size = criterion(pred, target)
 
             # Calculate loss
@@ -58,39 +62,50 @@ def val(epoch_num):
             total += 1
 
             # Save result
-            if epoch_num % 10 != 9:
+            if epoch_num % 1 != 0:
                 continue
             save_path = f'./outputs/epoch {epoch_num + 1}'
             if not os.path.exists(save_path):
                 os.mkdir(save_path)
-            count = 1
-            for origin, hm_true, hm_pred in zip(image, hm_target, pred[0]):
+            for image, labels, hm_target, hm_pred in zip(images, labels_s, hms_target, pred[0]):
                 # Post-process image
-                origin_save = origin.detach().numpy().transpose(1, 2, 0)
-                for i in range(3):
-                    origin_save[i] = origin_save[i] * val_set.std + val_set.mean
-                origin_save = origin_save.astype('uint8')
+                image_save = image.cpu().detach().numpy().transpose(2, 1, 0)
+                # for i in range(3):
+                #     image_save[i] = image_save[i] * val_set.std + val_set.mean
+                image_save = image_save.astype('uint8')
 
-                # Post-process hm_pred
-                hm_pred_save = cv2.resize(hm_pred.detach().numpy(), (512, 512))
-                hm_pred_save = (hm_pred_save * 255).astype('uint8')
+                for i in range(num_classes):
+                    label = int(labels[i].cpu().detach().numpy())
+                    if label != 1:
+                        continue
 
-                # Post-process hm_true
-                hm_true_save = cv2.resize(hm_true.detach().numpy(), (512, 512))
-                hm_true_save = (hm_true_save * 255).astype('uint8')
+                    # Post-process hm_pred
+                    hm_pred_save = cv2.resize(hm_pred[:, :, i].cpu().detach().numpy(), (512, 512))
+                    hm_pred_save = (hm_pred_save * 255).astype('uint8')
 
-                # Save images
-                cv2.imwrite(save_path + f"/{count} origin.jpg", origin_save)
-                cv2.imwrite(save_path + f"/{count} hm_pred.jpg", hm_pred_save)
-                cv2.imwrite(save_path + f"/{count} hm_true.jpg", hm_true_save)
+                    # Post-process hm_target
+                    hm_true_save = cv2.resize(hm_target[:, :, i].cpu().detach().numpy(), (512, 512))
+                    hm_true_save = (hm_true_save * 255).astype('uint8')
+
+                    # Save images
+                    image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(save_path + f"/{count} origin.jpg", image_save)
+
+                    hm_pred_save = cv2.cvtColor(hm_pred_save, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(save_path + f"/{count}-{i} hm_pred.jpg", hm_pred_save)
+
+                    hm_true_save = cv2.cvtColor(hm_true_save, cv2.COLOR_RGB2BGR)
+                    cv2.imwrite(save_path + f"/{count}-{i} hm_true.jpg", hm_true_save)
                 count += 1
-
 
     val_loss = running_loss / total
     val_loss_k = running_loss_k / total
     val_loss_off = running_loss_off / total
     val_loss_size = running_loss_size / total
-    print(f"Validation Loss = {val_loss:.4f}")
+    print(f"Validation Loss = {val_loss:<10.4f}"
+          f"Loss_k = {val_loss_k:<10.4f} "
+          f"Loss_off = {val_loss_off:<10.4f} "
+          f"Loss_size = {val_loss_size:<10.4f}")
     return val_loss, val_loss_k, val_loss_off, val_loss_size
 
 if __name__ == "__main__":
@@ -98,7 +113,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', type=str, default='')
     parser.add_argument('--epochs', type=int, default=140)
-    parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--min-confidence', type=float, default=0.25)
     parser.add_argument('--project-name', type=str, default='coco')
@@ -110,6 +125,7 @@ if __name__ == "__main__":
     learning_rate = args.learning_rate
     min_confidence = args.min_confidence
     project_name = args.project_name
+    weights = args.weights
 
     # Set device
     device = torch.device(
@@ -129,26 +145,40 @@ if __name__ == "__main__":
     print(f"\nTotal: {num_classes}\n")
 
     # Create neural network
+    print(fmt.format("Create neural network"))
     model = CenterNet(num_classes=num_classes)
+    device_count = torch.cuda.device_count()
+    print(f"Using {device_count} GPUs")
+    if device_count > 1:
+        model = nn.DataParallel(model)
     model.to(device)
-    weights = args.weights
     if weights != '':
         model.load_state_dict(torch.load(weights))
-        print(fmt.format("Load pretrained model") + '\n')
+        print(f"Load pretrained model: {weights}\n")
+    else:
+        print("Create new model\n")
 
     # Load dataset
     print(fmt.format("Loading training set"))
     train_set = CenterNetDataset(
         image_folder=f"./dataset/{project_name}/train/image/",
         annotation_folder=f"./dataset/{project_name}/train/annotation/",
+        train=True,
         num_classes=num_classes,
     )
+    print("Number of sample for each class: ", end='')
+    for i in range(num_classes):
+        if i % 10 == 0:
+            print('\n\t', end='')
+        print(f' {classes[i]}: {train_set.classes[i]} ', end='')
+    print('\n')
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, drop_last=True)
 
     print(fmt.format("Loading validation set"))
     val_set = CenterNetDataset(
         image_folder=f"./dataset/{project_name}/val/image/",
         annotation_folder=f"./dataset/{project_name}/val/annotation/",
+        train=False,
         num_classes=num_classes,
     )
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, drop_last=False)
@@ -159,18 +189,18 @@ if __name__ == "__main__":
 
     # Start training
     print(fmt.format("Start training") + '\n')
-    min_loss = 100
+    min_loss = -1
     epoch_list, loss_list, loss_k_list, loss_off_list, loss_size_list = [], [], [], [], []
     for epoch in range(epochs):
         print(f"< Epoch {epoch + 1} >")
 
         # Train + Val
-        train()
+        train(epoch)
         current_loss, current_loss_k, current_loss_off, current_loss_size = val(epoch)
 
         # Save model
         torch.save(model.state_dict(), f"./weights/epoch_{epoch + 1}.pth")
-        if current_loss < min_loss:
+        if current_loss < min_loss or min_loss == -1:
             torch.save(model.state_dict(), f"./weights/best.pth")
             print("Update the best model")
             min_loss = current_loss

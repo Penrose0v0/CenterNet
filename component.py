@@ -43,26 +43,39 @@ class Head(nn.Module):
 
         # heatmap
         self.hm_head = nn.Sequential(
-            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
+            # nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel, num_classes, kernel_size=1, stride=1, padding=0),
+            nn.Conv2d(channel, num_classes, kernel_size=1, stride=1, padding=0, bias=True),
             nn.Sigmoid()
         )
+        self.hm_head[-2].bias.data.fill_(-2.19)
 
         # bounding boxes height and width
         self.wh_head = nn.Sequential(
-            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
+            # nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0))
+            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0)
+        )
+        for m in self.wh_head.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
         # center point offset
         self.offset_head = nn.Sequential(
-            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
+            # nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0))
+            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0)
+        )
+        for m in self.offset_head.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.normal_(m.weight, std=0.001)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         hm = self.hm_head(x)
