@@ -1,9 +1,8 @@
 import torch
 from torch.utils.data.dataset import Dataset
-import torchvision.transforms as transforms
 import os
+import shutil
 import cv2
-from PIL import Image
 import numpy as np
 import math
 
@@ -46,15 +45,17 @@ class CenterNetDataset(Dataset):
         batch_offset_mask = np.zeros((self.output_shape[0], self.output_shape[1]), dtype=np.float32)
 
         # Get image, annotation
-        image, bboxes = self.data[item]
+        origin_image, origin_bboxes = self.data[item]
 
         # Preprocess
         if self.train:
-            image, bboxes = data_augmentation(image, bboxes)
-        image = cv2.resize(image, self.input_shape)
-        # image, bboxes = image_resize(image, self.input_shape, bboxes)
+            image, bboxes = data_augmentation(origin_image, origin_bboxes)
+        else:
+            image, bboxes = origin_image, origin_bboxes
+        image, bboxes = image_resize(image, self.input_shape, bboxes)
+        # image = cv2.resize(image, self.input_shape)
         image = (image / 255. - self.mean) / self.std
-        image = np.transpose(image, (2, 1, 0))
+        image = np.transpose(image, (2, 0, 1))
 
         # Get true hm, wh, offset, mask
         for bbox in bboxes:
@@ -105,7 +106,13 @@ class CenterNetDataset(Dataset):
             name, ext = os.path.splitext(image_file)
             annotation_file = os.path.join(self.annotation_folder, f"{name}.txt")
             if not os.path.exists(annotation_file):
-                raise f"{annotation_file} does not exist. "
+                # raise FileNotFoundError(f"{annotation_file} does not exist. ")
+                print(f"{annotation_file} does not exist. ")
+                destination = f'{self.image_folder}/../no_anno/'
+                if not os.path.exists(destination):
+                    os.mkdir(destination)
+                shutil.move(os.path.join(self.image_folder, image_file), destination)
+                continue
             with open(annotation_file, 'r', encoding='utf-8') as file:
                 lines = file.readlines()
                 bboxes = []
@@ -136,11 +143,11 @@ if __name__ == "__main__":
     # cv2.imshow('test', test_data)
     # cv2.waitKey(0)
     for data in data_set:
-        test = data[1].cpu().detach().numpy().transpose(2, 1, 0)
+        test = data[1].cpu().detach().numpy().transpose(1, 2, 0) * data_set.std + data_set.mean
+        test = (test * 255).astype('uint8')
+        test = cv2.cvtColor(test, cv2.COLOR_BGR2RGB)
         hm = cv2.resize(data[2][:, :, 0].cpu().detach().numpy(), (512, 512))
         mask = cv2.resize(data[-1].cpu().detach().numpy(), (512, 512))
-        for i in range(3):
-            test[i] = test[i] * data_set.std + data_set.mean
         cv2.imshow('test', test)
         cv2.imshow('hm', hm)
         cv2.imshow('mask', mask)

@@ -19,18 +19,35 @@ class Decoder(nn.Module):
             kernel = num_kernels[i]
             num_filter = num_filters[i]
 
-            layers.append(
-                nn.ConvTranspose2d(
-                    in_channels=self.in_channels,
-                    out_channels=num_filter,
-                    kernel_size=kernel,
-                    stride=2,
-                    padding=1,
-                    output_padding=0,
-                    bias=self.deconv_with_bias))
+            fc = nn.Conv2d(in_channels=self.in_channels,
+                           out_channels=num_filter,
+                           kernel_size=3,
+                           stride=1,
+                           padding=1,
+                           dilation=1,
+                           bias=False)
+            # fc = DCN(in_channels=self.in_channels,
+            #          out_channels=num_filter,
+            #          kernel_size=3,
+            #          stride=1,
+            #          padding=1)
+            up = nn.ConvTranspose2d(
+                in_channels=num_filter,
+                out_channels=num_filter,
+                kernel_size=kernel,
+                stride=2,
+                padding=1,
+                output_padding=0,
+                bias=self.deconv_with_bias)
+
+            layers.append(fc)
+            layers.append(nn.BatchNorm2d(num_filter, momentum=self.bn_momentum))
+            layers.append(nn.ReLU(inplace=True))
+            layers.append(up)
             layers.append(nn.BatchNorm2d(num_filter, momentum=self.bn_momentum))
             layers.append(nn.ReLU(inplace=True))
             self.in_channels = num_filter
+
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -56,7 +73,7 @@ class Head(nn.Module):
             nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
             # nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0)
+            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0, bias=True)
         )
         for m in self.wh_head.modules():
             if isinstance(m, nn.Conv2d):
@@ -69,7 +86,7 @@ class Head(nn.Module):
             nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
             # nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
-            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0)
+            nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0, bias=True)
         )
         for m in self.offset_head.modules():
             if isinstance(m, nn.Conv2d):

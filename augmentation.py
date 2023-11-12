@@ -2,7 +2,8 @@ import numpy as np
 import random
 import cv2
 
-def data_augmentation(image, bboxes):
+def data_augmentation(origin_image, origin_bboxes):
+    image, bboxes = origin_image.copy(), origin_bboxes.copy()
     if random.random() < 0.5:
         image, bboxes = random_horizontal_flip(image, bboxes)
     if random.random() < 0.5:

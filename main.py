@@ -19,11 +19,15 @@ def train(epoch_num, count=10):
         target = hm_target, wh_target, offset_target, offset_mask
         optimizer.zero_grad()
 
+        # Process backbone
+        if epoch_num < 100:
+            model.freeze_backbone()
+        else:
+            model.unfreeze_backbone()
+
         # Forward + Backward + Update
-        model.freeze = True if epoch_num < 140 else False
         pred = model(image)
         loss, loss_k, loss_off, loss_size = criterion(pred, target)
-        # print(loss)
         loss.backward()
         optimizer.step()
 
@@ -69,10 +73,8 @@ def val(epoch_num):
                 os.mkdir(save_path)
             for image, labels, hm_target, hm_pred in zip(images, labels_s, hms_target, pred[0]):
                 # Post-process image
-                image_save = image.cpu().detach().numpy().transpose(2, 1, 0)
-                # for i in range(3):
-                #     image_save[i] = image_save[i] * val_set.std + val_set.mean
-                image_save = image_save.astype('uint8')
+                image_save = image.cpu().detach().numpy().transpose(1, 2, 0) * val_set.std + val_set.mean
+                image_save = (image_save * 255).astype('uint8')
 
                 for i in range(num_classes):
                     label = int(labels[i].cpu().detach().numpy())
@@ -102,7 +104,8 @@ def val(epoch_num):
     val_loss_k = running_loss_k / total
     val_loss_off = running_loss_off / total
     val_loss_size = running_loss_size / total
-    print(f"Validation Loss = {val_loss:<10.4f}"
+    print(f"{'Validation':<5d}"
+          f"Loss = {val_loss:<10.4f}"
           f"Loss_k = {val_loss_k:<10.4f} "
           f"Loss_off = {val_loss_off:<10.4f} "
           f"Loss_size = {val_loss_size:<10.4f}")
@@ -111,9 +114,10 @@ def val(epoch_num):
 if __name__ == "__main__":
     fmt = "----- {:^25} -----"
     parser = argparse.ArgumentParser()
-    parser.add_argument('--weights', type=str, default='')
+    parser.add_argument('--model-path', type=str, default='./weights/save/official-101-0v0.pth')
+    parser.add_argument('--backbone-only', type=bool, default=False)
     parser.add_argument('--epochs', type=int, default=140)
-    parser.add_argument('--batch-size', type=int, default=64)
+    parser.add_argument('--batch-size', type=int, default=4)
     parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--min-confidence', type=float, default=0.25)
     parser.add_argument('--project-name', type=str, default='coco')
@@ -125,7 +129,8 @@ if __name__ == "__main__":
     learning_rate = args.learning_rate
     min_confidence = args.min_confidence
     project_name = args.project_name
-    weights = args.weights
+    model_path = args.model_path
+    backbone_only = args.backbone_only
 
     # Set device
     device = torch.device(
@@ -152,11 +157,21 @@ if __name__ == "__main__":
     if device_count > 1:
         model = nn.DataParallel(model)
     model.to(device)
-    if weights != '':
-        model.load_state_dict(torch.load(weights))
-        print(f"Load pretrained model: {weights}\n")
+
+    if model_path != '':
+        print(f"Loading pretrained model: {model_path}")
+        print(f"Backbone only: {backbone_only}\n")
+        model_dict = model.state_dict()
+        pretrained_dict = torch.load(model_path, map_location=device)
+        loading_dict = {}
+        for k, v in pretrained_dict.items():
+            if backbone_only and 'backbone.' not in k:
+                continue
+            loading_dict[k] = v
+        model_dict.update(loading_dict)
+        model.load_state_dict(model_dict)
     else:
-        print("Create new model\n")
+        print("Creating new model\n")
 
     # Load dataset
     print(fmt.format("Loading training set"))
@@ -190,6 +205,7 @@ if __name__ == "__main__":
     # Start training
     print(fmt.format("Start training") + '\n')
     min_loss = -1
+    best_epoch = 0
     epoch_list, loss_list, loss_k_list, loss_off_list, loss_size_list = [], [], [], [], []
     for epoch in range(epochs):
         print(f"< Epoch {epoch + 1} >")
@@ -204,6 +220,7 @@ if __name__ == "__main__":
             torch.save(model.state_dict(), f"./weights/best.pth")
             print("Update the best model")
             min_loss = current_loss
+            best_epoch = epoch + 1
         print()
 
         # Draw figure
@@ -217,4 +234,4 @@ if __name__ == "__main__":
         draw_figure(epoch_list, loss_off_list, "Loss_off", "./outputs/loss_off.png")
         draw_figure(epoch_list, loss_size_list, "Loss_size", "./outputs/loss_size.png")
 
-    print(f"Training finished! Min Loss: {min_loss:.4f}")
+    print(f"Training finished! Best Epoch: {best_epoch}, Min Loss: {min_loss:.4f}")

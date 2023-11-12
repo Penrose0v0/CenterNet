@@ -25,18 +25,18 @@ class CenterNetLoss(nn.Module):
 
     def focal_loss(self, pred, target):
         pred = torch.clamp(pred, 1e-6, 1 - 1e-6)
-        loss = 0
 
         pos_ind = target.eq(1).float()
-        pos_loss = pos_ind * torch.pow(1 - pred, self.alpha) * torch.log(pred)
-        pos_loss = pos_loss.sum()
-
         neg_ind = target.lt(1).float()
-        neg_loss = neg_ind * torch.pow(1 - target, self.beta) * torch.pow(pred, self.alpha) * torch.log(1 - pred)
+
+        pos_loss = torch.log(pred) * torch.pow(1 - pred, self.alpha) * pos_ind
+        neg_loss = torch.log(1 - pred) * torch.pow(pred, self.alpha) * torch.pow(1 - target, self.beta) * neg_ind
+
+        pos_loss = pos_loss.sum()
         neg_loss = neg_loss.sum()
 
         num_point = pos_ind.float().sum()
-        loss = loss - (pos_loss + neg_loss) / num_point if num_point != 0 else loss - neg_loss
+        loss = - (pos_loss + neg_loss) / num_point if num_point != 0 else - neg_loss
 
         return loss
 
@@ -70,9 +70,8 @@ class CenterNetLoss(nn.Module):
 
     def l1_loss(self, pred, target, mask):
         expand_mask = torch.unsqueeze(mask, -1).repeat(1, 1, 1, 2)
-        # loss = function.l1_loss(pred * expand_mask, target * expand_mask, reduction='sum')
         loss = function.l1_loss(pred * expand_mask, target * expand_mask, reduction='sum')
-        loss = loss / (mask.sum() + 1e-7)
+        loss = loss / (mask.sum() + 1e-4)
         return loss
 
 if __name__ == "__main__":

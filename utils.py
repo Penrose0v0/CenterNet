@@ -11,7 +11,7 @@ def draw_figure(x, y, title, save_path):
     plt.clf()
 
 def image_resize(image, target_size, gt_boxes=None):
-    ih, iw = target_size
+    iw, ih = target_size
 
     h, w = image.shape[:2]
 
@@ -29,11 +29,12 @@ def image_resize(image, target_size, gt_boxes=None):
         # Use no label image to train
         return image_paded, gt_boxes
     else:
-        gt_boxes[:, 1] = gt_boxes[:, 1] * scale + dw
-        gt_boxes[:, 2] = gt_boxes[:, 2] * scale + dh
-        gt_boxes[:, 3] = gt_boxes[:, 3] * scale
-        gt_boxes[:, 4] = gt_boxes[:, 4] * scale
-        return image_paded, gt_boxes
+        new_boxes = gt_boxes.copy()
+        new_boxes[:, 1] = (gt_boxes[:, 1] * nw + dw) / iw
+        new_boxes[:, 2] = (gt_boxes[:, 2] * nh + dh) / ih
+        new_boxes[:, 3] = gt_boxes[:, 3] * nw / iw
+        new_boxes[:, 4] = gt_boxes[:, 4] * nh / ih
+        return image_paded, new_boxes
 
 def normalize_image(image, mean, std):
     image = image.astype(np.float32)
