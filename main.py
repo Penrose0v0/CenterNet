@@ -5,6 +5,7 @@ import torch.optim as optim
 import cv2
 import os
 import argparse
+import time
 
 from network import CenterNet
 from loss import CenterNetLoss
@@ -37,11 +38,11 @@ def train(epoch_num, count=10):
         running_loss_off += loss_off.item()
         running_loss_size += loss_size.item()
         if batch_idx % count == count - 1:
-            print(f"Batch {batch_idx + 1:<5d} "
-                  f"Loss = {running_loss / count:<10.4f} "
-                  f"Loss_k = {running_loss_k / count:<10.4f} "
-                  f"Loss_off = {running_loss_off / count:<10.4f} "
-                  f"Loss_size = {running_loss_size / count:<10.4f}")
+            print(f"Batch {batch_idx + 1}\t\t"
+                  f"Loss = {running_loss / count:.4f}\t\t"
+                  f"Loss_k = {running_loss_k / count:.4f}\t\t"
+                  f"Loss_off = {running_loss_off / count:<.4f}\t\t"
+                  f"Loss_size = {running_loss_size / count:<.4f}")
             running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
 
 def val(epoch_num):
@@ -104,17 +105,17 @@ def val(epoch_num):
     val_loss_k = running_loss_k / total
     val_loss_off = running_loss_off / total
     val_loss_size = running_loss_size / total
-    print(f"{'Validation':<5d}"
-          f"Loss = {val_loss:<10.4f}"
-          f"Loss_k = {val_loss_k:<10.4f} "
-          f"Loss_off = {val_loss_off:<10.4f} "
-          f"Loss_size = {val_loss_size:<10.4f}")
+    print(f"Validation\t\t"
+          f"Loss = {val_loss:.4f}\t\t"
+          f"Loss_k = {val_loss_k:.4f}\t\t"
+          f"Loss_off = {val_loss_off:.4f}\t\t"
+          f"Loss_size = {val_loss_size:.4f}")
     return val_loss, val_loss_k, val_loss_off, val_loss_size
 
 if __name__ == "__main__":
     fmt = "----- {:^25} -----"
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-path', type=str, default='./weights/save/official-101-0v0.pth')
+    parser.add_argument('--model-path', type=str, default='./weights/save/super0v0.pth')
     parser.add_argument('--backbone-only', type=bool, default=False)
     parser.add_argument('--epochs', type=int, default=140)
     parser.add_argument('--batch-size', type=int, default=4)
@@ -200,7 +201,7 @@ if __name__ == "__main__":
 
     # Define criterion and optimizer
     criterion = CenterNetLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999), weight_decay=0)
 
     # Start training
     print(fmt.format("Start training") + '\n')
@@ -209,6 +210,7 @@ if __name__ == "__main__":
     epoch_list, loss_list, loss_k_list, loss_off_list, loss_size_list = [], [], [], [], []
     for epoch in range(epochs):
         print(f"< Epoch {epoch + 1} >")
+        start = time.time()
 
         # Train + Val
         train(epoch)
@@ -221,7 +223,6 @@ if __name__ == "__main__":
             print("Update the best model")
             min_loss = current_loss
             best_epoch = epoch + 1
-        print()
 
         # Draw figure
         epoch_list.append(epoch + 1)
@@ -233,5 +234,10 @@ if __name__ == "__main__":
         draw_figure(epoch_list, loss_k_list, "Loss_k", "./outputs/loss_k.png")
         draw_figure(epoch_list, loss_off_list, "Loss_off", "./outputs/loss_off.png")
         draw_figure(epoch_list, loss_size_list, "Loss_size", "./outputs/loss_size.png")
+
+        # Elapsed time
+        end = time.time()
+        use_time = int(end - start)
+        print(f"Elapsed time: {use_time // 60}m {use_time % 60}s\n")
 
     print(f"Training finished! Best Epoch: {best_epoch}, Min Loss: {min_loss:.4f}")

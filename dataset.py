@@ -7,7 +7,7 @@ import numpy as np
 import math
 
 from augmentation import data_augmentation
-from utils import gaussian_radius, draw_gaussian, get_affine_matrix, image_resize
+from utils import gaussian_radius, draw_gaussian, image_resize
 
 class CenterNetDataset(Dataset):
     def __init__(self, image_folder, annotation_folder, train,

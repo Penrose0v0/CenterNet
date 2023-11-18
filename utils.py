@@ -62,7 +62,6 @@ def draw_gaussian(heatmap, center, radius, k=1):
 
     return heatmap
 
-
 def gaussian2D(shape, sigma=1):
     m, n = [(ss - 1.) / 2. for ss in shape]
     y, x = np.ogrid[-m:m + 1, -n:n + 1]
@@ -71,7 +70,6 @@ def gaussian2D(shape, sigma=1):
     h[h < np.finfo(h.dtype).eps * h.max()] = 0
 
     return h
-
 
 def gaussian_radius(det_size, min_overlap=0.7):
     height, width = det_size
@@ -96,12 +94,6 @@ def gaussian_radius(det_size, min_overlap=0.7):
 
     return min(r1, r2, r3)
 
-
-def get_affine_matrix(image, size):
-    scale = min(size[0] / image.shape[1], size[1] / image.shape[0])
-    matrix = np.float32([[scale, 0, 0],
-                         [0, scale, 0]])
-    return matrix
 
 
 if __name__ == "__main__":

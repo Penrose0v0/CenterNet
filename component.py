@@ -25,12 +25,8 @@ class Decoder(nn.Module):
                            stride=1,
                            padding=1,
                            dilation=1,
-                           bias=False)
-            # fc = DCN(in_channels=self.in_channels,
-            #          out_channels=num_filter,
-            #          kernel_size=3,
-            #          stride=1,
-            #          padding=1)
+                           bias=True)
+
             up = nn.ConvTranspose2d(
                 in_channels=num_filter,
                 out_channels=num_filter,
@@ -61,7 +57,7 @@ class Head(nn.Module):
         # heatmap
         self.hm_head = nn.Sequential(
             nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
-            # nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel, num_classes, kernel_size=1, stride=1, padding=0, bias=True),
             nn.Sigmoid()
@@ -71,7 +67,7 @@ class Head(nn.Module):
         # bounding boxes height and width
         self.wh_head = nn.Sequential(
             nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
-            # nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0, bias=True)
         )
@@ -84,7 +80,7 @@ class Head(nn.Module):
         # center point offset
         self.offset_head = nn.Sequential(
             nn.Conv2d(64, channel, kernel_size=3, padding=1, bias=True),
-            # nn.BatchNorm2d(64, momentum=bn_momentum),
+            nn.BatchNorm2d(64, momentum=bn_momentum),
             nn.ReLU(inplace=True),
             nn.Conv2d(channel, 2, kernel_size=1, stride=1, padding=0, bias=True)
         )
