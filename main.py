@@ -12,7 +12,7 @@ from loss import CenterNetLoss
 from dataset import CenterNetDataset
 from utils import draw_figure
 
-def train(epoch_num, count=10):
+def train(epoch_num, count=5):
     running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
     for batch_idx, data in enumerate(train_loader, 0):
         # Get data
@@ -21,7 +21,7 @@ def train(epoch_num, count=10):
         optimizer.zero_grad()
 
         # Process backbone
-        if epoch_num < 100:
+        if epoch_num < 140:
             model.freeze_backbone()
         else:
             model.unfreeze_backbone()
@@ -38,11 +38,11 @@ def train(epoch_num, count=10):
         running_loss_off += loss_off.item()
         running_loss_size += loss_size.item()
         if batch_idx % count == count - 1:
-            print(f"Batch {batch_idx + 1}\t\t"
+            print(f"Batch {batch_idx + 1:<3d}\t\t"
                   f"Loss = {running_loss / count:.4f}\t\t"
                   f"Loss_k = {running_loss_k / count:.4f}\t\t"
-                  f"Loss_off = {running_loss_off / count:<.4f}\t\t"
-                  f"Loss_size = {running_loss_size / count:<.4f}")
+                  f"Loss_off = {running_loss_off / count:.4f}\t\t"
+                  f"Loss_size = {running_loss_size / count:.4f}")
             running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
 
 def val(epoch_num):
@@ -118,7 +118,7 @@ if __name__ == "__main__":
     parser.add_argument('--model-path', type=str, default='./weights/save/super0v0.pth')
     parser.add_argument('--backbone-only', type=bool, default=False)
     parser.add_argument('--epochs', type=int, default=140)
-    parser.add_argument('--batch-size', type=int, default=4)
+    parser.add_argument('--batch-size', type=int, default=16)
     parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--min-confidence', type=float, default=0.25)
     parser.add_argument('--project-name', type=str, default='coco')
