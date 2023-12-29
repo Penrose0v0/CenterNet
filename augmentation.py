@@ -1,45 +1,54 @@
 import numpy as np
 import random
 import cv2
+from utils import resize_image
 
-def data_augmentation(origin_image, origin_bboxes):
+def data_augmentation(origin_image, target_size, origin_bboxes, hue=.1, sat=0.7, val=0.4):
     image, bboxes = origin_image.copy(), origin_bboxes.copy()
     if random.random() < 0.5:
         image, bboxes = random_horizontal_flip(image, bboxes)
     if random.random() < 0.5:
         image, bboxes = random_vertical_flip(image, bboxes)
-    if random.random() < 0.5:
-        image, bboxes = random_crop(image, bboxes)
-    if random.random() < 0.5:
-        image, bboxes = random_translate(image, bboxes)
+    image, bboxes = random_crop(image, bboxes)
+    image, bboxes = random_translate(image, bboxes)
 
-    # Brightness
-    if random.random() < 0.5:
-        brightness_factor = random.uniform(0.6, 1.4)
-        image = cv2.convertScaleAbs(image, alpha=brightness_factor, beta=0)
-        image = np.clip(image, 0, 255)
+    image, bboxes = resize_image(image, target_size, bboxes)
 
-    # Color
-    if random.random() < 0.5:
-        color_factor = random.uniform(0.7, 1.3)
-        zeros = np.zeros(image.shape, dtype=np.uint8)
-        image = cv2.addWeighted(image, color_factor, zeros, 1 - color_factor, 0)
-        image = np.clip(image, 0, 255)
+    r = np.random.uniform(-1, 1, 3) * [hue, sat, val] + 1
+    hue, sat, val = cv2.split(cv2.cvtColor(image, cv2.COLOR_RGB2HSV))
+    dtype = image.dtype
 
-    # Contrast
-    if random.random() < 0.5:
-        contrast_factor = random.uniform(0.7, 1.3)
-        image = cv2.convertScaleAbs(image, alpha=contrast_factor, beta=0)
-        image = np.clip(image, 0, 255)
+    x = np.arange(0, 256, dtype=r.dtype)
+    lut_hue = ((x * r[0]) % 180).astype(dtype)
+    lut_sat = np.clip(x * r[1], 0, 255).astype(dtype)
+    lut_val = np.clip(x * r[2], 0, 255).astype(dtype)
 
-    # Sharpness
-    if random.random() < 0.5:
-        sharpness_factor = random.uniform(0, 2.0)
-        kernel = np.array([[-1, -1, -1],
-                           [-1, 9 + sharpness_factor, -1],
-                           [-1, -1, -1]])
-        image = cv2.filter2D(image, -1, kernel)
-        image = np.clip(image, 0, 255)
+    image_data = cv2.merge((cv2.LUT(hue, lut_hue), cv2.LUT(sat, lut_sat), cv2.LUT(val, lut_val)))
+    image = cv2.cvtColor(image_data, cv2.COLOR_HSV2RGB)
+
+    # # Brightness
+    # brightness_factor = random.uniform(0.6, 1.4)
+    # image = cv2.convertScaleAbs(image, alpha=brightness_factor, beta=0)
+    # image = np.clip(image, 0, 255)
+    #
+    # # Color
+    # color_factor = random.uniform(0.7, 1.3)
+    # zeros = np.zeros(image.shape, dtype=np.uint8)
+    # image = cv2.addWeighted(image, color_factor, zeros, 1 - color_factor, 0)
+    # image = np.clip(image, 0, 255)
+    #
+    # # Contrast
+    # contrast_factor = random.uniform(0.7, 1.3)
+    # image = cv2.convertScaleAbs(image, alpha=contrast_factor, beta=0)
+    # image = np.clip(image, 0, 255)
+    #
+    # # Sharpness
+    # sharpness_factor = random.uniform(0, 2.0)
+    # kernel = np.array([[-1, -1, -1],
+    #                    [-1, 9 + sharpness_factor, -1],
+    #                    [-1, -1, -1]])
+    # image = cv2.filter2D(image, -1, kernel)
+    # image = np.clip(image, 0, 255)
 
     return image, bboxes
 

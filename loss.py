@@ -14,9 +14,7 @@ class CenterNetLoss(nn.Module):
         hm_pred, wh_pred, offset_pred = pred
         hm_target, wh_target, offset_target, offset_mask = target
 
-        loss_k = self.focal_loss(hm_pred, hm_target)  # Use focal loss
-        # loss_k = self.cross_entropy(hm_pred, hm_target)  # Use cross entropy
-        # loss_k = self.MSE(hm_pred, hm_target)  # Use MSE
+        loss_k = self.focal_loss(hm_pred, hm_target)
         loss_off = self.lambda_off * self.l1_loss(offset_pred, offset_target, offset_mask)
         loss_size = self.lambda_size * self.l1_loss(wh_pred, wh_target, offset_mask)
 
@@ -39,34 +37,6 @@ class CenterNetLoss(nn.Module):
         loss = - (pos_loss + neg_loss) / num_point if num_point != 0 else - neg_loss
 
         return loss
-
-    def cross_entropy(self, pred, target):
-        pred = torch.clamp(pred, 1e-6, 1 - 1e-6)
-
-        # pred_total = pred.sum()
-        # target_total = target.sum()
-        # p = pred / pred_total
-        # t = target / target_total
-        #
-        # ce_loss = t * torch.log(p) + (1 - t) * torch.log(1 - p)
-        # loss = - ce_loss.sum()
-
-        pos_ind = target.gt(0).float()
-        pos_loss = pos_ind * torch.log(pred)
-        pos_loss = pos_loss.sum()
-
-        neg_ind = target.eq(0).float()
-        neg_loss = neg_ind * torch.log(1 - pred)
-        neg_loss = neg_loss.sum()
-
-        point_ind = target.eq(1).float()
-        num_point = pos_ind.float().sum()
-        loss = - (pos_loss + neg_loss) / num_point if num_point != 0 else - neg_loss
-
-        return loss
-
-    def MSE(self, pred, target):
-        return torch.pow(pred - target, 2).sum()
 
     def l1_loss(self, pred, target, mask):
         expand_mask = torch.unsqueeze(mask, -1).repeat(1, 1, 1, 2)

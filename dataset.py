@@ -7,7 +7,7 @@ import numpy as np
 import math
 
 from augmentation import data_augmentation
-from utils import gaussian_radius, draw_gaussian, image_resize
+from utils import gaussian_radius, draw_gaussian, resize_image, normalize_image
 
 class CenterNetDataset(Dataset):
     def __init__(self, image_folder, annotation_folder, train,
@@ -49,13 +49,10 @@ class CenterNetDataset(Dataset):
 
         # Preprocess
         if self.train:
-            image, bboxes = data_augmentation(origin_image, origin_bboxes)
+            image, bboxes = data_augmentation(origin_image, self.input_shape, origin_bboxes)
         else:
-            image, bboxes = origin_image, origin_bboxes
-        image, bboxes = image_resize(image, self.input_shape, bboxes)
-        # image = cv2.resize(image, self.input_shape)
-        image = (image / 255. - self.mean) / self.std
-        image = np.transpose(image, (2, 0, 1))
+            image, bboxes = resize_image(origin_image, self.input_shape, origin_bboxes)
+        image = np.transpose(normalize_image(image), (2, 0, 1))
 
         # Get true hm, wh, offset, mask
         for bbox in bboxes:
@@ -98,6 +95,8 @@ class CenterNetDataset(Dataset):
         total = 0
         for image_file in image_files:
             # Add image and preprocess
+            if '.jpg' not in image_file:
+                continue
             image = cv2.imread(os.path.join(self.image_folder, image_file))
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             datum = [image]
@@ -117,6 +116,9 @@ class CenterNetDataset(Dataset):
                 lines = file.readlines()
                 bboxes = []
                 for line in lines:
+                    # if eval(line.split()[0]) == 0:
+                    #     bboxes.append(list(map(eval, line.split())))
+                    #     self.classes[eval(line.split()[0])] += 1
                     bboxes.append(list(map(eval, line.split())))
                     self.classes[eval(line.split()[0])] += 1
                 bboxes = np.array(bboxes)
@@ -145,9 +147,15 @@ if __name__ == "__main__":
     for data in data_set:
         test = data[1].cpu().detach().numpy().transpose(1, 2, 0) * data_set.std + data_set.mean
         test = (test * 255).astype('uint8')
-        test = cv2.cvtColor(test, cv2.COLOR_BGR2RGB)
+        test = cv2.cvtColor(test, cv2.COLOR_RGB2BGR)
         hm = cv2.resize(data[2][:, :, 0].cpu().detach().numpy(), (512, 512))
+        # hm = data[2][:, :, 0]
         mask = cv2.resize(data[-1].cpu().detach().numpy(), (512, 512))
+        # for row in hm:
+        #     for element in row:
+        #         print(element, end=' ')
+        #     print()
+        # print(hm.eq(1).float().sum())
         cv2.imshow('test', test)
         cv2.imshow('hm', hm)
         cv2.imshow('mask', mask)

@@ -1,7 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
-import os
 
 
 def draw_figure(x, y, title, save_path):
@@ -10,9 +9,8 @@ def draw_figure(x, y, title, save_path):
     plt.savefig(save_path)
     plt.clf()
 
-def image_resize(image, target_size, gt_boxes=None):
+def resize_image(image, target_size, gt_boxes=None):
     iw, ih = target_size
-
     h, w = image.shape[:2]
 
     scale = min(iw/w, ih/h)
@@ -36,12 +34,16 @@ def image_resize(image, target_size, gt_boxes=None):
         new_boxes[:, 4] = gt_boxes[:, 4] * nh / ih
         return image_paded, new_boxes
 
-def normalize_image(image, mean, std):
+def normalize_image(image):
     image = image.astype(np.float32)
-    for channel in range(3):
-        image[channel] = (image[channel] - mean[channel]) / std[channel]
-        image[channel] = np.clip(image[channel], -1.0, 1.0)
-    return image
+    mean = [0.40789655, 0.44719303, 0.47026116]
+    std = [0.2886383, 0.27408165, 0.27809834]
+    return (image / 255. - mean) / std
+
+def unnormalize_image(image):
+    mean = [0.40789655, 0.44719303, 0.47026116]
+    std = [0.2886383, 0.27408165, 0.27809834]
+    return (image * std + mean) * 255.
 
 
 def draw_gaussian(heatmap, center, radius, k=1):
@@ -94,26 +96,3 @@ def gaussian_radius(det_size, min_overlap=0.7):
 
     return min(r1, r2, r3)
 
-
-
-if __name__ == "__main__":
-    image_folder = "dataset/cat/val/image/"
-    image_files = os.listdir(image_folder)
-    for image_file in image_files:
-        img = cv2.imread(os.path.join(image_folder, image_file))
-        print(img.shape)
-        input_size = (512, 512)
-
-        cv2.imshow('origin', img)
-        m = get_affine_matrix(img, input_size)
-        print(m[0][0])
-        print(img.shape[0] * m[0][0] / 4)
-
-        img = cv2.warpAffine(img, m, input_size)
-        img = cv2.resize(img, (128, 128))
-        print(img.shape)
-        cv2.imshow('transformed', img)
-
-        key = cv2.waitKey(0)
-        if key == ord('q'):
-            break

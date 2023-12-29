@@ -10,21 +10,17 @@ import time
 from network import CenterNet
 from loss import CenterNetLoss
 from dataset import CenterNetDataset
-from utils import draw_figure
+from utils import draw_figure, unnormalize_image
 
-def train(epoch_num, count=5):
+def train(epoch_num, count=100):
+    model.train()
     running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
+    print(f"< Epoch {epoch_num + 1} >")
     for batch_idx, data in enumerate(train_loader, 0):
         # Get data
         image, hm_target, wh_target, offset_target, offset_mask = map(lambda x: x.to(device), data[1:])
         target = hm_target, wh_target, offset_target, offset_mask
         optimizer.zero_grad()
-
-        # Process backbone
-        if epoch_num < 140:
-            model.freeze_backbone()
-        else:
-            model.unfreeze_backbone()
 
         # Forward + Backward + Update
         pred = model(image)
@@ -46,6 +42,7 @@ def train(epoch_num, count=5):
             running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
 
 def val(epoch_num):
+    model.eval()
     running_loss, running_loss_k, running_loss_off, running_loss_size = 0.0, 0.0, 0.0, 0.0
     total = 0
     with torch.no_grad():
@@ -74,8 +71,8 @@ def val(epoch_num):
                 os.mkdir(save_path)
             for image, labels, hm_target, hm_pred in zip(images, labels_s, hms_target, pred[0]):
                 # Post-process image
-                image_save = image.cpu().detach().numpy().transpose(1, 2, 0) * val_set.std + val_set.mean
-                image_save = (image_save * 255).astype('uint8')
+                image_save = image.cpu().detach().numpy().transpose(1, 2, 0)
+                image_save = unnormalize_image(image_save).astype('uint8')
 
                 for i in range(num_classes):
                     label = int(labels[i].cpu().detach().numpy())
@@ -115,17 +112,20 @@ def val(epoch_num):
 if __name__ == "__main__":
     fmt = "----- {:^25} -----"
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model-path', type=str, default='./weights/save/super0v0.pth')
+    parser.add_argument('--model-path', type=str, default='')
     parser.add_argument('--backbone-only', type=bool, default=False)
-    parser.add_argument('--epochs', type=int, default=140)
-    parser.add_argument('--batch-size', type=int, default=16)
+    parser.add_argument('--freeze-epochs', type=int, default=100)
+    parser.add_argument('--unfreeze-epochs', type=int, default=400)
+    parser.add_argument('--batch-size', type=int, default=128)
     parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--min-confidence', type=float, default=0.25)
     parser.add_argument('--project-name', type=str, default='coco')
     args = parser.parse_args()
 
-    # Set hyper-parameters
-    epochs = args.epochs
+    """Set hyper-parameters"""
+    freeze_epochs = args.freeze_epochs
+    unfreeze_epochs = args.unfreeze_epochs
+    epochs = freeze_epochs + unfreeze_epochs
     batch_size = args.batch_size
     learning_rate = args.learning_rate
     min_confidence = args.min_confidence
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     device = torch.device(
         "cuda:0" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
-    # Analyze task
+    """Analyze task"""
     print(fmt.format("Analyzing task"))
     with open(f"./dataset/{project_name}/name.txt", 'r') as file:
         classes = list(map(lambda x: x.strip(), file.readlines()))
@@ -148,10 +148,13 @@ if __name__ == "__main__":
             print('\n\t', end='')
         print(f" [{cls}] ", end='')
         num_classes += 1
+    # num_classes = 1
     print(f"\nTotal: {num_classes}\n")
 
-    # Create neural network
+    """Create neural network"""
     print(fmt.format("Create neural network"))
+
+    # Create an instance
     model = CenterNet(num_classes=num_classes)
     device_count = torch.cuda.device_count()
     print(f"Using {device_count} GPUs")
@@ -159,22 +162,35 @@ if __name__ == "__main__":
         model = nn.DataParallel(model)
     model.to(device)
 
+    # Load pretrained model or create a new model
     if model_path != '':
         print(f"Loading pretrained model: {model_path}")
-        print(f"Backbone only: {backbone_only}\n")
+        print(f"Backbone only: {backbone_only}")
         model_dict = model.state_dict()
         pretrained_dict = torch.load(model_path, map_location=device)
         loading_dict = {}
+        unloaded_layers = []
         for k, v in pretrained_dict.items():
             if backbone_only and 'backbone.' not in k:
                 continue
+            if k not in model_dict:
+                unloaded_layers.append(k)
+                continue
             loading_dict[k] = v
+        print(f"Loaded layers: {loading_dict.keys()}")
+        print(f"Unloaded layers: {unloaded_layers}")
         model_dict.update(loading_dict)
         model.load_state_dict(model_dict)
     else:
-        print("Creating new model\n")
+        print("Creating new model")
+    print()
 
-    # Load dataset
+    # Define criterion
+    criterion = CenterNetLoss()
+    optimizer = optim.Adam(params=model.parameters())
+
+    """Load dataset"""
+    # Load train set
     print(fmt.format("Loading training set"))
     train_set = CenterNetDataset(
         image_folder=f"./dataset/{project_name}/train/image/",
@@ -190,6 +206,7 @@ if __name__ == "__main__":
     print('\n')
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, drop_last=True)
 
+    # Load val set
     print(fmt.format("Loading validation set"))
     val_set = CenterNetDataset(
         image_folder=f"./dataset/{project_name}/val/image/",
@@ -197,27 +214,32 @@ if __name__ == "__main__":
         train=False,
         num_classes=num_classes,
     )
+    print()
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False, drop_last=False)
 
-    # Define criterion and optimizer
-    criterion = CenterNetLoss()
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999), weight_decay=0)
-
-    # Start training
-    print(fmt.format("Start training") + '\n')
+    """Start training"""
     min_loss = -1
     best_epoch = 0
     epoch_list, loss_list, loss_k_list, loss_off_list, loss_size_list = [], [], [], [], []
     for epoch in range(epochs):
-        print(f"< Epoch {epoch + 1} >")
         start = time.time()
+
+        # Reset optimizer
+        if epoch == 0 and freeze_epochs > 0:
+            print(fmt.format("Start freeze training") + '\n')
+            model.freeze_backbone()
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
+        if epoch == freeze_epochs:
+            print(fmt.format("Start unfreeze training") + '\n')
+            model.unfreeze_backbone()
+            optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
 
         # Train + Val
         train(epoch)
         current_loss, current_loss_k, current_loss_off, current_loss_size = val(epoch)
 
         # Save model
-        torch.save(model.state_dict(), f"./weights/epoch_{epoch + 1}.pth")
+        torch.save(model.state_dict(), f"./weights/current.pth")
         if current_loss < min_loss or min_loss == -1:
             torch.save(model.state_dict(), f"./weights/best.pth")
             print("Update the best model")
