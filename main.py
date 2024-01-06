@@ -74,6 +74,10 @@ def val(epoch_num):
                 image_save = image.cpu().detach().numpy().transpose(1, 2, 0)
                 image_save = unnormalize_image(image_save).astype('uint8')
 
+                # Save images
+                image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
+                cv2.imwrite(save_path + f"/{count} origin.jpg", image_save)
+
                 for i in range(num_classes):
                     label = int(labels[i].cpu().detach().numpy())
                     if label != 1:
@@ -87,10 +91,7 @@ def val(epoch_num):
                     hm_true_save = cv2.resize(hm_target[:, :, i].cpu().detach().numpy(), (512, 512))
                     hm_true_save = (hm_true_save * 255).astype('uint8')
 
-                    # Save images
-                    image_save = cv2.cvtColor(image_save, cv2.COLOR_RGB2BGR)
-                    cv2.imwrite(save_path + f"/{count} origin.jpg", image_save)
-
+                    # Save heatmap
                     hm_pred_save = cv2.cvtColor(hm_pred_save, cv2.COLOR_RGB2BGR)
                     cv2.imwrite(save_path + f"/{count}-{i} hm_pred.jpg", hm_pred_save)
 
@@ -116,7 +117,7 @@ if __name__ == "__main__":
     parser.add_argument('--backbone-only', type=bool, default=False)
     parser.add_argument('--freeze-epochs', type=int, default=100)
     parser.add_argument('--unfreeze-epochs', type=int, default=400)
-    parser.add_argument('--batch-size', type=int, default=128)
+    parser.add_argument('--batch-size', type=int, default=64)
     parser.add_argument('--learning-rate', type=float, default=5e-4)
     parser.add_argument('--min-confidence', type=float, default=0.25)
     parser.add_argument('--project-name', type=str, default='coco')
@@ -158,9 +159,6 @@ if __name__ == "__main__":
     model = CenterNet(num_classes=num_classes)
     device_count = torch.cuda.device_count()
     print(f"Using {device_count} GPUs")
-    if device_count > 1:
-        model = nn.DataParallel(model)
-    model.to(device)
 
     # Load pretrained model or create a new model
     if model_path != '':
@@ -171,6 +169,7 @@ if __name__ == "__main__":
         loading_dict = {}
         unloaded_layers = []
         for k, v in pretrained_dict.items():
+            k = k.replace('module.', '')
             if backbone_only and 'backbone.' not in k:
                 continue
             if k not in model_dict:
@@ -183,6 +182,8 @@ if __name__ == "__main__":
         model.load_state_dict(model_dict)
     else:
         print("Creating new model")
+    model = nn.DataParallel(model)
+    model.to(device)
     print()
 
     # Define criterion
@@ -227,11 +228,11 @@ if __name__ == "__main__":
         # Reset optimizer
         if epoch == 0 and freeze_epochs > 0:
             print(fmt.format("Start freeze training") + '\n')
-            model.freeze_backbone()
+            model.module.freeze_backbone()
             optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
         if epoch == freeze_epochs:
             print(fmt.format("Start unfreeze training") + '\n')
-            model.unfreeze_backbone()
+            model.module.unfreeze_backbone()
             optimizer = optim.Adam(model.parameters(), lr=learning_rate, betas=(0.9, 0.999))
 
         # Train + Val

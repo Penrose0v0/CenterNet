@@ -7,7 +7,7 @@ import numpy as np
 import math
 
 from augmentation import data_augmentation
-from utils import gaussian_radius, draw_gaussian, resize_image, normalize_image
+from utils import gaussian_radius, draw_gaussian, resize_image, normalize_image, unnormalize_image
 
 class CenterNetDataset(Dataset):
     def __init__(self, image_folder, annotation_folder, train,
@@ -145,8 +145,8 @@ if __name__ == "__main__":
     # cv2.imshow('test', test_data)
     # cv2.waitKey(0)
     for data in data_set:
-        test = data[1].cpu().detach().numpy().transpose(1, 2, 0) * data_set.std + data_set.mean
-        test = (test * 255).astype('uint8')
+        test = data[1].cpu().detach().numpy().transpose(1, 2, 0)
+        test = unnormalize_image(test).astype('uint8')
         test = cv2.cvtColor(test, cv2.COLOR_RGB2BGR)
         hm = cv2.resize(data[2][:, :, 0].cpu().detach().numpy(), (512, 512))
         # hm = data[2][:, :, 0]
